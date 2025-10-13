@@ -1,99 +1,114 @@
-class PuzzleState:
-    def __init__(self, board, parent=None, move="", depth=0):
-        self.board = board
-        self.parent = parent
-        self.move = move
-        self.depth = depth
+import random
 
-    def find_blank(self):
-        return self.board.index(0)
+def conflicts(state):
+    """Count number of pairs of queens attacking each other."""
+    n = len(state)
+    count = 0
+    for i in range(n):
+        for j in range(i + 1, n):
+            if state[i] == state[j] or abs(state[i] - state[j]) == abs(i - j):
+                count += 1
+    return count
 
-    def get_moves(self):
-        """Generate possible moves"""
-        blank = self.find_blank()
-        moves = []
-        row, col = divmod(blank, 3)
-        directions = {
-            "Up": (row - 1, col),
-            "Down": (row + 1, col),
-            "Left": (row, col - 1),
-            "Right": (row, col + 1)
-        }
-        for move, (r, c) in directions.items():
-            if 0 <= r < 3 and 0 <= c < 3:
-                new_blank = r * 3 + c
-                new_board = self.board[:]
-                new_board[blank], new_board[new_blank] = new_board[new_blank], new_board[blank]
-                moves.append(PuzzleState(new_board, self, move, self.depth + 1))
-        return moves
+def generate_neighbors(state):
+    """Generate all neighbors by moving one queen to another row in its column."""
+    neighbors = []
+    n = len(state)
+    for col in range(n):
+        for row in range(n):
+            if row != state[col]:
+                neighbor = state.copy()
+                neighbor[col] = row
+                neighbors.append(neighbor)
+    return neighbors
 
-    def path(self):
-        """Reconstruct solution path"""
-        node, p = self, []
-        while node:
-            p.append((node.move, node.board))
-            node = node.parent
-        return list(reversed(p))
+def print_board(state):
+    """Print the board configuration."""
+    n = len(state)
+    for row in range(n):
+        line = ""
+        for col in range(n):
+            if state[col] == row:
+                line += " Q "
+            else:
+                line += " . "
+        print(line)
+    print("\n")
 
-    def print_board(self):
-        """Print the board in 3x3 matrix form"""
-        for i in range(0, 9, 3):
-            print(self.board[i:i+3])
-        print()
+def hill_climbing_n_queens(n, max_iterations=1000, max_restarts=50):
+    def random_state():
+        return [random.randint(0, n - 1) for _ in range(n)]
 
+    current_state = random_state()
+    current_conflicts = conflicts(current_state)
 
-# ----------------- Heuristics -----------------
-def misplaced_tiles(state, goal):
-    return sum(1 for i in range(9) if state.board[i] != 0 and state.board[i] != goal[i])
+    print("Initial board:")
+    print_board(current_state)
+    print(f"Initial conflicts: {current_conflicts}\n")
 
-def manhattan_distance(state, goal):
-    dist = 0
-    for i in range(9):
-        if state.board[i] != 0:
-            r1, c1 = divmod(i, 3)
-            r2, c2 = divmod(goal.index(state.board[i]), 3)
-            dist += abs(r1 - r2) + abs(c1 - c2)
-    return dist
+    restarts = 0
+    iteration = 0
 
+    while restarts < max_restarts:
+        improved = True
+        while improved and iteration < max_iterations:
+            iteration += 1
+            neighbors = generate_neighbors(current_state)
+            neighbor_conflicts = [conflicts(neigh) for neigh in neighbors]
 
-# ----------------- Hill Climbing Algorithm -----------------
-def hill_climbing(start, goal, heuristic):
-    current = PuzzleState(start)
-    current_heuristic = heuristic(current, goal)
+            min_conflicts = min(neighbor_conflicts)
+            min_indices = [i for i, val in enumerate(neighbor_conflicts) if val == min_conflicts]
 
-    while True:
-        neighbors = current.get_moves()
-        best_neighbor = None
-        best_heuristic = float('inf')
+            if min_conflicts < current_conflicts:
+                chosen_index = random.choice(min_indices)
+                next_state = neighbors[chosen_index]
+                # Find which column changed and rows before/after
+                for col in range(n):
+                    if current_state[col] != next_state[col]:
+                        moved_col = col
+                        old_row = current_state[col]
+                        new_row = next_state[col]
+                        break
+                direction = "up" if new_row < old_row else "down"
+                print(f"Iteration {iteration}: Moved queen in column {moved_col} from row {old_row} {direction} to row {new_row}, conflicts {min_conflicts}")
+                current_state = next_state
+                current_conflicts = min_conflicts
 
-        for neighbor in neighbors:
-            h = heuristic(neighbor, goal)
-            if h < best_heuristic:
-                best_heuristic = h
-                best_neighbor = neighbor
+            elif min_conflicts == current_conflicts:
+                chosen_index = random.choice(min_indices)
+                next_state = neighbors[chosen_index]
+                # Find which column changed and rows before/after
+                for col in range(n):
+                    if current_state[col] != next_state[col]:
+                        moved_col = col
+                        old_row = current_state[col]
+                        new_row = next_state[col]
+                        break
+                direction = "up" if new_row < old_row else "down"
+                print(f"Iteration {iteration}: Moved queen in column {moved_col} from row {old_row} {direction} to row {new_row} (equal objective), conflicts {min_conflicts}")
+                current_state = next_state
+                current_conflicts = min_conflicts
 
-        # Stop if no better neighbor found (local optimum)
-        if best_heuristic >= current_heuristic:
-            return current.path()
+            else:
+                print(f"Iteration {iteration}: Local optimum reached with conflicts {current_conflicts}")
+                improved = False
 
-        current = best_neighbor
-        current_heuristic = best_heuristic
+        if current_conflicts == 0:
+            print("\nGlobal optimum found!")
+            break
 
+        restarts += 1
+        current_state = random_state()
+        current_conflicts = conflicts(current_state)
+        print(f"\nRestart {restarts}: New random state with conflicts {current_conflicts}")
 
-# ----------------- Example Run -----------------
-if __name__ == "__main__":
-    initial_state = [1, 2, 3,
-                     4, 7, 5,
-                     6, 8, 0]
+    print("\nFinal board:")
+    print_board(current_state)
+    print(f"Final conflicts: {current_conflicts}")
+    print(f"Total iterations: {iteration}")
+    print(f"Total restarts: {restarts}")
+    return current_state
 
-    goal_state =    [1, 2, 3,
-                     4, 0, 5,
-                     6, 7, 8]
-
-    print("Hill Climbing with Manhattan Distance:")
-    solution = hill_climbing(initial_state, goal_state, manhattan_distance)
-
-    for move, state in solution:
-        h_value = manhattan_distance(PuzzleState(state), goal_state)
-        print(f"Move: {move}, Heuristic: {h_value}")
-        PuzzleState(state).print_board()
+# Example: Solve 8-Queens
+n = 5
+hill_climbing_n_queens(n)
